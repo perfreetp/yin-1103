@@ -9,6 +9,7 @@ import { FollowUp } from "@/pages/FollowUp";
 import { Annotations } from "@/pages/Annotations";
 import { Assessment } from "@/pages/Assessment";
 import { ArchivePage } from "@/pages/Archive";
+import { StudentTrail } from "@/pages/StudentTrail";
 import { useAuthStore } from "@/store/useAuthStore";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -93,6 +94,22 @@ export default function App() {
           element={
             <ProtectedRoute>
               <ArchivePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/students/:studentId"
+          element={
+            <ProtectedRoute>
+              <StudentTrail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/my-trail"
+          element={
+            <ProtectedRoute>
+              <StudentTrail />
             </ProtectedRoute>
           }
         />

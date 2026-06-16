@@ -43,7 +43,10 @@ interface ArchiveItem {
   id: string;
   type: string;
   title: string;
+  caseId?: string;
   caseName?: string;
+  taskId?: string;
+  taskName?: string;
   description: string;
   date: string;
   tags?: string[];
@@ -61,6 +64,7 @@ export function ArchivePage() {
   const [activeTab, setActiveTab] = useState<TabValue>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedCaseId, setSelectedCaseId] = useState('all');
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [uploadForm, setUploadForm] = useState({
     title: '',
@@ -94,7 +98,10 @@ export function ArchivePage() {
       id: o.id,
       type: 'outline',
       title: o.title,
+      caseId: o.caseId,
       caseName: o.caseName,
+      taskId: o.taskId,
+      taskName: o.taskName,
       description: `基于病例 ${o.caseName} 的病例讨论提纲`,
       date: o.generatedAt,
       sections: o.sections,
@@ -103,7 +110,10 @@ export function ArchivePage() {
       id: e.id,
       type: 'excellent_case',
       title: e.caseName,
+      caseId: e.caseId,
       caseName: e.caseName,
+      taskId: e.taskId,
+      taskName: e.taskName,
       description: e.reason,
       date: e.archivedAt,
       tags: e.tags,
@@ -115,6 +125,10 @@ export function ArchivePage() {
       id: d.id,
       type: d.type,
       title: d.title,
+      caseId: d.caseId,
+      caseName: d.caseName,
+      taskId: d.taskId,
+      taskName: d.taskName,
       description: d.description,
       date: d.createdAt,
       author: d.author,
@@ -122,7 +136,7 @@ export function ArchivePage() {
     })),
   ], [discussionOutlines, excellentCases, archiveDocuments]);
 
-  // 统一筛选逻辑：tab + search + category下拉
+  // 统一筛选逻辑：tab + search + category下拉 + case筛选
   const filteredItems = useMemo(() => {
     return allItems.filter(item => {
       // 1. Tab筛选
@@ -136,6 +150,7 @@ export function ArchivePage() {
           item.title,
           item.description,
           item.caseName,
+          item.taskName,
           item.diagnosis,
           item.author,
           item.category,
@@ -153,9 +168,15 @@ export function ArchivePage() {
           }
         }
       }
+      // 4. 按病例筛选
+      if (selectedCaseId !== 'all') {
+        if (item.caseId !== selectedCaseId) {
+          return false;
+        }
+      }
       return true;
     });
-  }, [allItems, activeTab, searchQuery, selectedCategory]);
+  }, [allItems, activeTab, searchQuery, selectedCategory, selectedCaseId]);
 
   // 按类型分组统计
   const stats = useMemo(() => [
@@ -316,6 +337,22 @@ export function ArchivePage() {
                 下载
               </button>
             </div>
+            {(item.caseName || item.taskName) && (
+              <div className="mt-3 pt-3 border-t border-slate-100 flex flex-wrap gap-2">
+                {item.caseName && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-blue-50 text-blue-600 rounded">
+                    <Link2 className="w-3 h-3" />
+                    {item.caseName}
+                  </span>
+                )}
+                {item.taskName && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-green-50 text-green-600 rounded">
+                    <ClipboardList className="w-3 h-3" />
+                    {item.taskName}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -326,6 +363,7 @@ export function ArchivePage() {
     setActiveTab('all');
     setSearchQuery('');
     setSelectedCategory('all');
+    setSelectedCaseId('all');
   };
 
   return (
@@ -403,7 +441,7 @@ export function ArchivePage() {
             </nav>
 
             {/* 当前筛选提示 */}
-            {(searchQuery || selectedCategory !== 'all') && (
+            {(searchQuery || selectedCategory !== 'all' || selectedCaseId !== 'all') && (
               <div className="mt-4 pt-4 border-t border-slate-100">
                 <p className="text-xs text-slate-500 mb-2">当前筛选</p>
                 <div className="flex flex-wrap gap-1.5">
@@ -419,6 +457,12 @@ export function ArchivePage() {
                       <button onClick={() => setSelectedCategory('all')}><X className="w-3 h-3" /></button>
                     </span>
                   )}
+                  {selectedCaseId !== 'all' && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">
+                      {originalCases.find(c => c.id === selectedCaseId)?.anonymousCode || '关联病例'}
+                      <button onClick={() => setSelectedCaseId('all')}><X className="w-3 h-3" /></button>
+                    </span>
+                  )}
                 </div>
               </div>
             )}
@@ -428,12 +472,12 @@ export function ArchivePage() {
         {/* 右侧内容区 */}
         <div className="lg:col-span-3">
           {/* 搜索栏 */}
-          <div className="flex gap-3 mb-6">
-            <div className="flex-1 relative">
+          <div className="flex flex-wrap gap-3 mb-6">
+            <div className="flex-1 min-w-[200px] relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="text"
-                placeholder="搜索标题、描述、标签、作者..."
+                placeholder="搜索标题、描述、标签、作者、病例..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full pl-9 pr-4 py-2.5 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500"
@@ -456,6 +500,16 @@ export function ArchivePage() {
               <option value="技术规范">技术规范</option>
               <option value="文书模板">文书模板</option>
               <option value="参考资料">参考资料</option>
+            </select>
+            <select 
+              value={selectedCaseId}
+              onChange={(e) => setSelectedCaseId(e.target.value)}
+              className="px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 bg-white min-w-[180px]"
+            >
+              <option value="all">全部病例</option>
+              {originalCases.map((c) => (
+                <option key={c.id} value={c.id}>{c.anonymousCode} - {c.diagnosis.substring(0, 15)}</option>
+              ))}
             </select>
           </div>
 

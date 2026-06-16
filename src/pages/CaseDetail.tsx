@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { 
   ArrowLeft, 
@@ -10,7 +10,11 @@ import {
   Image as ImageIcon,
   XCircle,
   CheckCircle2,
-  Circle
+  Circle,
+  FileText,
+  Star,
+  Lightbulb,
+  BookOpen
 } from 'lucide-react';
 import { useCaseStore } from '../store/useCaseStore';
 import { cn } from '../lib/utils';
@@ -21,6 +25,7 @@ const tabs = [
   { id: 'treatment', label: '治疗方案' },
   { id: 'followup', label: '随访记录' },
   { id: 'photos', label: '照片模型' },
+  { id: 'materials', label: '相关资料' },
 ];
 
 const difficultyConfig = {
@@ -47,7 +52,7 @@ const photoTypeLabels: Record<string, string> = {
 export function CaseDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { currentCase, fetchCaseDetail } = useCaseStore();
+  const { currentCase, fetchCaseDetail, discussionOutlines, excellentCases, archiveDocuments } = useCaseStore();
   const [activeTab, setActiveTab] = useState('overview');
 
   useEffect(() => {
@@ -55,6 +60,64 @@ export function CaseDetail() {
       fetchCaseDetail(id);
     }
   }, [id, fetchCaseDetail]);
+
+  // 筛选当前病例关联的资料
+  const caseMaterials = useMemo(() => {
+    const materials: Array<{
+      id: string;
+      type: string;
+      title: string;
+      description: string;
+      date: string;
+      taskName?: string;
+      icon: any;
+      color: string;
+    }> = [];
+    
+    // 讨论提纲
+    discussionOutlines
+      .filter(o => o.caseId === id)
+      .forEach(o => materials.push({
+        id: o.id,
+        type: 'outline',
+        title: o.title,
+        description: '病例讨论提纲',
+        date: o.generatedAt,
+        taskName: o.taskName,
+        icon: Lightbulb,
+        color: 'bg-yellow-50 text-yellow-600',
+      }));
+    
+    // 优秀案例
+    excellentCases
+      .filter(e => e.caseId === id)
+      .forEach(e => materials.push({
+        id: e.id,
+        type: 'excellent_case',
+        title: e.caseName,
+        description: e.reason,
+        date: e.archivedAt,
+        taskName: e.taskName,
+        icon: Star,
+        color: 'bg-accent-50 text-accent-600',
+      }));
+    
+    // 参考资料和模板
+    archiveDocuments
+      .filter(d => d.caseId === id)
+      .forEach(d => materials.push({
+        id: d.id,
+        type: d.type,
+        title: d.title,
+        description: d.description,
+        date: d.createdAt,
+        taskName: d.taskName,
+        icon: d.type === 'template' ? FileText : BookOpen,
+        color: d.type === 'template' ? 'bg-green-50 text-green-600' : 'bg-blue-50 text-blue-600',
+      }));
+    
+    return materials;
+  }, [id, discussionOutlines, excellentCases, archiveDocuments]);
 
   if (!currentCase) {
     return (
@@ -457,6 +520,66 @@ export function CaseDetail() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {activeTab === 'materials' && (
+          <div className="bg-white rounded-lg border border-slate-200 p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-slate-800">相关资料</h3>
+              <Link
+                to="/archive"
+                className="text-sm text-primary-600 hover:text-primary-700 flex items-center gap-1"
+              >
+                查看全部
+                <ChevronRight className="w-4 h-4" />
+              </Link>
+            </div>
+            
+            {caseMaterials.length > 0 ? (
+              <div className="space-y-3">
+                {caseMaterials.map((material) => {
+                  const Icon = material.icon;
+                  return (
+                    <div
+                      key={material.id}
+                      className="flex items-center gap-4 p-4 border border-slate-200 rounded-lg hover:border-primary-300 hover:bg-slate-50 transition-all cursor-pointer group"
+                    >
+                      <div className={cn('w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0', material.color)}>
+                        <Icon className="w-5 h-5" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-medium text-slate-800 group-hover:text-primary-700 transition-colors">
+                          {material.title}
+                        </h4>
+                        <p className="text-sm text-slate-500 line-clamp-1 mt-0.5">
+                          {material.description}
+                        </p>
+                        {material.taskName && (
+                          <span className="inline-block mt-1.5 px-2 py-0.5 text-xs bg-green-50 text-green-600 rounded">
+                            关联任务：{material.taskName}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-400 flex-shrink-0">
+                        {material.date}
+                      </div>
+                      <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-primary-500 transition-colors flex-shrink-0" />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <div className="w-14 h-14 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <FileText className="w-7 h-7 text-slate-400" />
+                </div>
+                <p className="text-slate-600 font-medium mb-1">暂无相关资料</p>
+                <p className="text-sm text-slate-400">
+                  该病例暂未关联归档资料，可在资料归档中上传并关联
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>

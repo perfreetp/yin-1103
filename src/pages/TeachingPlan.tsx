@@ -356,6 +356,9 @@ export function TeachingPlan() {
           {boardData.map((caseItem) => {
             const totalSubmitted = caseItem.phases.reduce((acc, p) => acc + p.totalStats.submitted, 0);
             const totalReviewed = caseItem.phases.reduce((acc, p) => acc + p.totalStats.reviewed, 0);
+            const totalSubmissions = caseItem.phases.reduce((acc, p) => {
+              return acc + p.tasks.reduce((tAcc, t) => tAcc + t.stats.total, 0);
+            }, 0);
             
             return (
               <div 
@@ -381,8 +384,12 @@ export function TeachingPlan() {
                         <p className="text-xl font-bold text-slate-800 font-mono">{caseItem.studentCount}</p>
                       </div>
                       <div className="text-center">
+                        <p className="text-xs text-slate-500 mb-1">总提交</p>
+                        <p className="text-xl font-bold text-slate-700 font-mono">{totalSubmissions}</p>
+                      </div>
+                      <div className="text-center">
                         <p className="text-xs text-slate-500 mb-1">待批阅</p>
-                        <p className="text-xl font-bold text-accent-600 font-mono">{totalSubmitted - totalReviewed}</p>
+                        <p className="text-xl font-bold text-accent-600 font-mono">{totalSubmitted}</p>
                       </div>
                       <div className="text-center">
                         <p className="text-xs text-slate-500 mb-1">已批阅</p>
@@ -406,7 +413,7 @@ export function TeachingPlan() {
                           <div className="ml-auto flex items-center gap-4 text-xs">
                             <span className="text-accent-600 flex items-center gap-1">
                               <AlertCircle className="w-3 h-3" />
-                              待批阅 {phase.totalStats.submitted - phase.totalStats.reviewed}
+                              待批阅 {phase.totalStats.submitted}
                             </span>
                             <span className="text-green-600 flex items-center gap-1">
                               <CheckCheck className="w-3 h-3" />
@@ -467,14 +474,24 @@ export function TeachingPlan() {
                                     <div 
                                       key={sub.id}
                                       className="flex items-center gap-2 p-2 rounded hover:bg-slate-50 transition-colors cursor-pointer"
-                                      onClick={() => navigate(`/annotations?submissionId=${sub.id}`)}
+                                      onClick={() => navigate(`/annotations?submissionId=${sub.id}&from=task-${task.id}`)}
                                     >
                                       <img
                                         src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${sub.studentId}`}
                                         alt={sub.studentName}
                                         className="w-6 h-6 rounded-full bg-slate-200"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          navigate(`/students/${sub.studentId}`);
+                                        }}
                                       />
-                                      <span className="text-xs text-slate-600 flex-1 truncate">
+                                      <span 
+                                        className="text-xs text-slate-600 flex-1 truncate hover:text-primary-600 transition-colors"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          navigate(`/students/${sub.studentId}`);
+                                        }}
+                                      >
                                         {sub.studentName}
                                       </span>
                                       <span className={cn(

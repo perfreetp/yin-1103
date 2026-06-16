@@ -13,7 +13,9 @@ import {
   Calendar,
   Image as ImageIcon,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Star,
+  Lightbulb
 } from 'lucide-react';
 import { useCaseStore } from '../store/useCaseStore';
 import { useAuthStore } from '../store/useAuthStore';
@@ -29,7 +31,7 @@ const taskTypeLabels: Record<string, string> = {
 export function TaskDetail() {
   const { taskId } = useParams<{ taskId: string }>();
   const navigate = useNavigate();
-  const { originalCases, submissions, submitTask } = useCaseStore();
+  const { originalCases, submissions, submitTask, discussionOutlines, excellentCases, archiveDocuments } = useCaseStore();
   const { currentUser } = useAuthStore();
   const [content, setContent] = useState('');
   const [judgmentBasis, setJudgmentBasis] = useState('');
@@ -64,6 +66,76 @@ export function TaskDetail() {
     if (!taskId) return [];
     return submissions.filter(s => s.taskId === taskId);
   }, [submissions, taskId]);
+
+  // 当前任务关联的资料
+  const taskMaterials = useMemo(() => {
+    if (!taskId || !taskInfo?.caseItem.id) return [];
+    const caseId = taskInfo.caseItem.id;
+    const materials: Array<{
+      id: string;
+      type: string;
+      title: string;
+      icon: any;
+      color: string;
+    }> = [];
+    
+    // 关联到具体任务的
+    discussionOutlines
+      .filter(o => o.taskId === taskId)
+      .forEach(o => materials.push({
+        id: o.id,
+        type: 'outline',
+        title: o.title,
+        icon: Lightbulb,
+        color: 'bg-yellow-50 text-yellow-600',
+      }));
+    
+    excellentCases
+      .filter(e => e.taskId === taskId)
+      .forEach(e => materials.push({
+        id: e.id,
+        type: 'excellent_case',
+        title: e.caseName,
+        icon: Star,
+        color: 'bg-accent-50 text-accent-600',
+      }));
+    
+    archiveDocuments
+      .filter(d => d.taskId === taskId)
+      .forEach(d => materials.push({
+        id: d.id,
+        type: d.type,
+        title: d.title,
+        icon: d.type === 'template' ? FileText : BookOpen,
+        color: d.type === 'template' ? 'bg-green-50 text-green-600' : 'bg-blue-50 text-blue-600',
+      }));
+    
+    // 只关联病例、没具体到任务的（只取前3个）
+    const caseOnlyMaterials: typeof materials = [];
+    discussionOutlines
+      .filter(o => o.caseId === caseId && !o.taskId)
+      .slice(0, 2)
+      .forEach(o => caseOnlyMaterials.push({
+        id: o.id,
+        type: 'outline',
+        title: o.title,
+        icon: Lightbulb,
+        color: 'bg-yellow-50 text-yellow-600',
+      }));
+    
+    archiveDocuments
+      .filter(d => d.caseId === caseId && !d.taskId)
+      .slice(0, 2)
+      .forEach(d => caseOnlyMaterials.push({
+        id: d.id,
+        type: d.type,
+        title: d.title,
+        icon: d.type === 'template' ? FileText : BookOpen,
+        color: d.type === 'template' ? 'bg-green-50 text-green-600' : 'bg-blue-50 text-blue-600',
+      }));
+    
+    return [...materials, ...caseOnlyMaterials].slice(0, 6);
+  }, [taskId, taskInfo, discussionOutlines, excellentCases, archiveDocuments]);
 
   const handleSubmit = () => {
     if (!content || !judgmentBasis) {
@@ -322,14 +394,22 @@ export function TaskDetail() {
                       className="block p-4 border border-slate-200 rounded-lg hover:border-primary-300 hover:bg-slate-50 transition-all"
                     >
                       <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center gap-3">
+                        <div 
+                          className="flex items-center gap-3 cursor-pointer"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            navigate(`/students/${sub.studentId}`);
+                          }}
+                        >
                           <img
                             src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${sub.studentId}`}
                             alt={sub.studentName}
                             className="w-9 h-9 rounded-full bg-slate-200"
                           />
                           <div>
-                            <p className="font-medium text-slate-700">{sub.studentName}</p>
+                            <p className="font-medium text-slate-700 hover:text-primary-600 transition-colors">
+                              {sub.studentName}
+                            </p>
                             <p className="text-xs text-slate-500">提交于 {sub.submittedAt}</p>
                           </div>
                         </div>
@@ -457,6 +537,36 @@ export function TaskDetail() {
               )}
             </div>
           </div>
+
+          {/* 相关资料 */}
+          {taskMaterials.length > 0 && (
+            <div className="bg-white rounded-lg border border-slate-200 p-5">
+              <h3 className="font-semibold text-slate-800 mb-4 flex items-center justify-between">
+                相关资料
+                <Link to="/archive" className="text-xs text-primary-600 hover:text-primary-700 font-normal">
+                  更多
+                </Link>
+              </h3>
+              <div className="space-y-2">
+                {taskMaterials.map((material) => {
+                  const Icon = material.icon;
+                  return (
+                    <div
+                      key={material.id}
+                      className="flex items-center gap-3 p-3 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors group"
+                    >
+                      <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0', material.color)}>
+                        <Icon className="w-4 h-4" />
+                      </div>
+                      <p className="text-sm text-slate-700 group-hover:text-primary-700 transition-colors line-clamp-1 flex-1">
+                        {material.title}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </Layout>

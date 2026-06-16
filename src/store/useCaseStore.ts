@@ -121,7 +121,9 @@ interface CaseState {
     description: string;
     author: string;
     caseId?: string;
+    caseName?: string;
     taskId?: string;
+    taskName?: string;
   }) => void;
   
   // 数据重置（用于演示）
@@ -274,18 +276,34 @@ export const useCaseStore = create<CaseState>((set, get) => ({
 
   addArchiveDocument: (doc) => {
     const today = new Date().toISOString().split('T')[0];
+    const caseItem = doc.caseId ? get().originalCases.find(c => c.id === doc.caseId) : null;
+    const caseName = caseItem?.diagnosis || doc.caseName || '';
+    
+    // 查找任务名
+    let taskName = doc.taskName || '';
+    if (doc.taskId && caseItem) {
+      for (const phase of caseItem.phases) {
+        const task = phase.tasks.find(t => t.id === doc.taskId);
+        if (task) {
+          taskName = task.title;
+          break;
+        }
+      }
+    }
     
     // 根据类型添加到对应的集合
     if (doc.type === 'excellent_case') {
       const newExcellent: ExcellentCase = {
         id: `excellent-${Date.now()}`,
         caseId: doc.caseId || '',
-        caseName: doc.title,
+        caseName: caseName || doc.title,
         diagnosis: doc.category,
         reason: doc.description,
         tags: [doc.category],
         archivedAt: today,
         difficultyLevel: 'medium',
+        taskId: doc.taskId,
+        taskName,
       };
       const newExcellentCases = [...get().excellentCases, newExcellent];
       set({ excellentCases: newExcellentCases });
@@ -294,9 +312,11 @@ export const useCaseStore = create<CaseState>((set, get) => ({
       const newOutline: DiscussionOutline = {
         id: `outline-${Date.now()}`,
         caseId: doc.caseId || '',
-        caseName: doc.title,
+        caseName: caseName || doc.title,
         title: doc.title,
         generatedAt: today,
+        taskId: doc.taskId,
+        taskName,
         sections: [
           { title: '一、病例特点分析', points: ['待补充'] },
           { title: '二、诊断与鉴别诊断', points: ['待补充'] },
@@ -315,6 +335,10 @@ export const useCaseStore = create<CaseState>((set, get) => ({
         description: doc.description,
         createdAt: today,
         author: doc.author,
+        caseId: doc.caseId,
+        caseName,
+        taskId: doc.taskId,
+        taskName,
       };
       const newDocs = [...get().archiveDocuments, newDoc];
       set({ archiveDocuments: newDocs });

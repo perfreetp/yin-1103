@@ -111,9 +111,10 @@ export function Annotations() {
     setNewContent('');
     setNewDeviationType('diagnosis');
     setNewSeverity(2);
-    // 清除 URL 参数
-    if (submissionIdFromUrl) {
-      navigate('/annotations', { replace: true });
+    
+    // 如果是从任务详情跳转过来的，保存后自动返回任务详情
+    if (fromTask) {
+      navigate(`/teaching-plan/${fromTask.replace('task-', '')}`);
     }
   };
 

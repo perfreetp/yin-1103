@@ -138,6 +138,8 @@ export interface DiscussionOutline {
   title: string;
   sections: OutlineSection[];
   generatedAt: string;
+  taskId?: string;
+  taskName?: string;
 }
 
 export interface OutlineSection {
@@ -154,6 +156,8 @@ export interface ExcellentCase {
   tags: string[];
   archivedAt: string;
   difficultyLevel: CaseDifficulty;
+  taskId?: string;
+  taskName?: string;
 }
 
 export interface ArchiveDocument {
@@ -164,4 +168,8 @@ export interface ArchiveDocument {
   description: string;
   createdAt: string;
   author: string;
+  caseId?: string;
+  caseName?: string;
+  taskId?: string;
+  taskName?: string;
 }
