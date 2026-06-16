@@ -29,6 +29,7 @@ export function Dashboard() {
     const totalSubmissions = submissions.length;
     const reviewedSubmissions = submissions.filter(s => s.status === 'reviewed').length;
     const pendingReview = submissions.filter(s => s.status === 'submitted').length;
+    const totalAnnotations = submissions.reduce((sum, s) => sum + s.annotations.length, 0);
     
     // 学生视角的统计
     let myCompletedTasks = 0;
@@ -50,6 +51,7 @@ export function Dashboard() {
       totalSubmissions,
       reviewedSubmissions,
       pendingReview,
+      totalAnnotations,
       myCompletedTasks,
       myPendingTasks,
       myAvgScore,
@@ -188,7 +190,7 @@ export function Dashboard() {
         />
         <StatCard
           title={currentUser?.role === 'teacher' ? '批注总数' : '平均分'}
-          value={currentUser?.role === 'teacher' ? stats.totalSubmissions : (stats.myAvgScore || '--')}
+          value={currentUser?.role === 'teacher' ? stats.totalAnnotations : (stats.myAvgScore || '--')}
           icon={Award}
           color="primary"
           trend={{ value: 3, isUp: true }}
@@ -362,6 +364,10 @@ export function Dashboard() {
                 <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
                   <span className="text-sm text-slate-600">总提交数</span>
                   <span className="text-lg font-bold text-slate-800 font-mono">{stats.totalSubmissions}</span>
+                </div>
+                <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                  <span className="text-sm text-blue-700">批注总数</span>
+                  <span className="text-lg font-bold text-blue-700 font-mono">{stats.totalAnnotations}</span>
                 </div>
                 <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
                   <span className="text-sm text-green-700">已批阅</span>

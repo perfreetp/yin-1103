@@ -16,7 +16,12 @@ import {
   CheckCheck,
   Send,
   Eye,
-  MessageSquareText
+  MessageSquareText,
+  Filter,
+  AlertTriangle,
+  UserX,
+  Download,
+  BarChart3
 } from 'lucide-react';
 import { useCaseStore } from '../store/useCaseStore';
 import { cn } from '../lib/utils';
@@ -36,6 +41,13 @@ export function TeachingPlan() {
   const [expandedCase, setExpandedCase] = useState<string | null>(originalCases[0]?.id || null);
   const [viewMode, setViewMode] = useState<'list' | 'board'>('list');
   const navigate = useNavigate();
+  
+  // 看板筛选状态
+  const [boardFilter, setBoardFilter] = useState({
+    caseId: '',
+    phaseId: '',
+    studentId: '',
+  });
 
   const activeCases = useMemo(() => 
     originalCases.filter(c => c.status === 'in_progress' || c.status === 'draft'),
@@ -115,6 +127,265 @@ export function TeachingPlan() {
       };
     });
   }, [activeCases, submissions]);
+
+  // 所有学生列表
+  const allStudents = useMemo(() => {
+    const studentMap = new Map<string, { id: string; name: string }>();
+    submissions.forEach(s => {
+      if (!studentMap.has(s.studentId)) {
+        studentMap.set(s.studentId, { id: s.studentId, name: s.studentName });
+      }
+    });
+    return Array.from(studentMap.values());
+  }, [submissions]);
+
+  // 筛选后的看板数据
+  const filteredBoardData = useMemo(() => {
+    let data = [...boardData];
+    
+    // 按病例筛选
+    if (boardFilter.caseId) {
+      data = data.filter(c => c.id === boardFilter.caseId);
+    }
+    
+    // 按阶段筛选
+    if (boardFilter.phaseId) {
+      data = data.map(caseItem => ({
+        ...caseItem,
+        phases: caseItem.phases.filter(p => p.id === boardFilter.phaseId),
+      })).filter(c => c.phases.length > 0);
+    }
+    
+    // 按学生筛选
+    if (boardFilter.studentId) {
+      data = data.map(caseItem => {
+        const phases = caseItem.phases.map(phase => {
+          const tasks = phase.tasks.map(task => {
+            const studentSubmissions = task.submissions.filter(
+              s => s.studentId === boardFilter.studentId
+            );
+            return {
+              ...task,
+              stats: {
+                total: studentSubmissions.length,
+                submitted: studentSubmissions.filter(s => s.status === 'submitted').length,
+                reviewed: studentSubmissions.filter(s => s.status === 'reviewed').length,
+                needsRevision: studentSubmissions.filter(s => s.status === 'needs_revision').length,
+              },
+              submissions: studentSubmissions,
+            };
+          });
+          return {
+            ...phase,
+            tasks,
+            totalStats: {
+              submitted: tasks.reduce((acc, t) => acc + t.stats.submitted, 0),
+              reviewed: tasks.reduce((acc, t) => acc + t.stats.reviewed, 0),
+            },
+          };
+        });
+        const caseSubmissions = caseItem.phases.flatMap(p => p.tasks).flatMap(t => t.submissions)
+          .filter(s => s.studentId === boardFilter.studentId);
+        return {
+          ...caseItem,
+          phases,
+          studentCount: 1,
+        };
+      }).filter(c => c.phases.some(p => p.tasks.some(t => t.submissions.length > 0)));
+    }
+    
+    return data;
+  }, [boardData, boardFilter]);
+
+  // 任务卡点分析：待批阅最多的任务
+  const stuckTasks = useMemo(() => {
+    const tasks: Array<{
+      caseId: string;
+      caseName: string;
+      phaseId: string;
+      phaseName: string;
+      taskId: string;
+      taskName: string;
+      submitted: number;
+      totalStudents: number;
+      submissionRate: number;
+    }> = [];
+    
+    boardData.forEach(caseItem => {
+      const totalStudents = caseItem.studentCount;
+      caseItem.phases.forEach(phase => {
+        phase.tasks.forEach(task => {
+          if (task.stats.submitted > 0 || task.stats.total > 0) {
+            tasks.push({
+              caseId: caseItem.id,
+              caseName: caseItem.diagnosis,
+              phaseId: phase.id,
+              phaseName: phase.name,
+              taskId: task.id,
+              taskName: task.title,
+              submitted: task.stats.submitted,
+              totalStudents,
+              submissionRate: totalStudents > 0 ? Math.round((task.stats.total / totalStudents) * 100) : 0,
+            });
+          }
+        });
+      });
+    });
+    
+    // 按待批阅数排序，取前5个
+    return tasks
+      .sort((a, b) => b.submitted - a.submitted)
+      .slice(0, 5);
+  }, [boardData]);
+
+  // 未提交学生分析（只在有选中病例时计算）
+  const missingSubmissions = useMemo(() => {
+    if (!boardFilter.caseId) return [];
+    
+    const caseItem = boardData.find(c => c.id === boardFilter.caseId);
+    if (!caseItem) return [];
+    
+    const caseStudentIds = new Set(
+      submissions.filter(s => s.caseId === boardFilter.caseId).map(s => s.studentId)
+    );
+    
+    const allStudentIds = new Set(allStudents.map(s => s.id));
+    
+    // 找出所有任务中哪些学生没交
+    const result: Array<{
+      phaseId: string;
+      phaseName: string;
+      taskId: string;
+      taskName: string;
+      missingStudents: Array<{ id: string; name: string }>;
+    }> = [];
+    
+    caseItem.phases.forEach(phase => {
+      phase.tasks.forEach(task => {
+        const submittedStudentIds = new Set(task.submissions.map(s => s.studentId));
+        const missing = allStudents.filter(s => !submittedStudentIds.has(s.id) && caseStudentIds.has(s.id));
+        
+        if (missing.length > 0) {
+          result.push({
+            phaseId: phase.id,
+            phaseName: phase.name,
+            taskId: task.id,
+            taskName: task.title,
+            missingStudents: missing,
+          });
+        }
+      });
+    });
+    
+    return result;
+  }, [boardFilter.caseId, boardData, allStudents, submissions]);
+
+  // 批量点评：获取所有待批阅的提交ID
+  const pendingSubmissions = useMemo(() => {
+    const result: Array<{
+      id: string;
+      studentName: string;
+      taskName: string;
+      caseName: string;
+    }> = [];
+    
+    filteredBoardData.forEach(caseItem => {
+      caseItem.phases.forEach(phase => {
+        phase.tasks.forEach(task => {
+          task.submissions
+            .filter(s => s.status === 'submitted')
+            .forEach(sub => {
+              result.push({
+                id: sub.id,
+                studentName: sub.studentName,
+                taskName: task.title,
+                caseName: caseItem.diagnosis,
+              });
+            });
+        });
+      });
+    });
+    
+    return result;
+  }, [filteredBoardData]);
+
+  // 导出病例进度报告
+  const exportBoardReport = () => {
+    const targetData = boardFilter.caseId ? filteredBoardData : boardData;
+    const reportTitle = boardFilter.caseId 
+      ? `病例 ${boardFilter.caseId} 进度报告` 
+      : '教学进度汇总报告';
+    
+    let report = '';
+    report += '='.repeat(60) + '\n';
+    report += `           口腔正畸教学 - ${reportTitle}\n`;
+    report += '='.repeat(60) + '\n\n';
+    
+    // 总体统计
+    report += '【总体统计】\n';
+    const totalCases = targetData.length;
+    const totalTasks = targetData.reduce((acc, c) => 
+      acc + c.phases.reduce((pAcc, p) => pAcc + p.tasks.length, 0), 0);
+    const totalSubs = targetData.reduce((acc, c) =>
+      acc + c.phases.reduce((pAcc, p) => pAcc + p.tasks.reduce((tAcc, t) => tAcc + t.stats.total, 0), 0), 0);
+    const totalReviewed = targetData.reduce((acc, c) =>
+      acc + c.phases.reduce((pAcc, p) => pAcc + p.totalStats.reviewed, 0), 0);
+    const totalPending = targetData.reduce((acc, c) =>
+      acc + c.phases.reduce((pAcc, p) => pAcc + p.totalStats.submitted, 0), 0);
+    
+    report += `病例数：${totalCases} 个\n`;
+    report += `任务数：${totalTasks} 个\n`;
+    report += `总提交：${totalSubs} 份\n`;
+    report += `已批阅：${totalReviewed} 份\n`;
+    report += `待批阅：${totalPending} 份\n\n`;
+    
+    // 各病例详情
+    report += '【各病例详情】\n';
+    report += '-'.repeat(50) + '\n\n';
+    
+    targetData.forEach((caseItem, caseIdx) => {
+      report += `病例 ${caseIdx + 1}：${caseItem.diagnosis}\n`;
+      report += `病例编号：${caseItem.anonymousCode}\n`;
+      report += `参与学生：${caseItem.studentCount} 人\n\n`;
+      
+      caseItem.phases.forEach((phase) => {
+        report += `  ▶ ${phase.name}（${phase.duration}）\n`;
+        report += `    已批阅：${phase.totalStats.reviewed} 份 | 待批阅：${phase.totalStats.submitted} 份\n\n`;
+        
+        phase.tasks.forEach((task) => {
+          report += `    · ${task.title}\n`;
+          report += `      提交统计：总${task.stats.total} / 待批阅${task.stats.submitted} / 已批阅${task.stats.reviewed}\n`;
+          
+          if (task.submissions.length > 0) {
+            report += '      学生提交：\n';
+            task.submissions.forEach((sub) => {
+              const statusText = sub.status === 'reviewed' ? '已批阅' :
+                               sub.status === 'needs_revision' ? '需修改' : '待批阅';
+              const scoreText = sub.score ? `${sub.score}分` : '无评分';
+              report += `        - ${sub.studentName} [${statusText}] [${scoreText}]\n`;
+            });
+          }
+          report += '\n';
+        });
+      });
+      
+      report += '-'.repeat(50) + '\n\n';
+    });
+    
+    report += `报告生成时间：${new Date().toLocaleString()}\n`;
+    report += '='.repeat(60) + '\n';
+    
+    // 下载文件
+    const blob = new Blob([report], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `教学进度报告_${new Date().toISOString().split('T')[0]}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <Layout>
@@ -353,7 +624,189 @@ export function TeachingPlan() {
       ) : (
         /* 进度看板视图 */
         <div className="space-y-6">
-          {boardData.map((caseItem) => {
+          {/* 筛选栏 */}
+          <div className="bg-white rounded-lg border border-slate-200 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Filter className="w-5 h-5 text-primary-600" />
+                <h3 className="font-semibold text-slate-800">进度筛选</h3>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={exportBoardReport}
+                  className="flex items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700 transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  导出报告
+                </button>
+                <button
+                  onClick={() => setBoardFilter({ caseId: '', phaseId: '', studentId: '' })}
+                  className="text-sm text-slate-500 hover:text-primary-600 transition-colors"
+                >
+                  清空筛选
+                </button>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm text-slate-600 mb-1.5">按病例</label>
+                <select
+                  value={boardFilter.caseId}
+                  onChange={(e) => setBoardFilter({ ...boardFilter, caseId: e.target.value, phaseId: '' })}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 bg-white"
+                >
+                  <option value="">全部病例</option>
+                  {boardData.map(c => (
+                    <option key={c.id} value={c.id}>{c.anonymousCode} - {c.diagnosis.substring(0, 20)}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm text-slate-600 mb-1.5">按阶段</label>
+                <select
+                  value={boardFilter.phaseId}
+                  onChange={(e) => setBoardFilter({ ...boardFilter, phaseId: e.target.value })}
+                  disabled={!boardFilter.caseId}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 bg-white disabled:bg-slate-50 disabled:text-slate-400"
+                >
+                  <option value="">全部阶段</option>
+                  {boardFilter.caseId && (() => {
+                    const caseItem = boardData.find(c => c.id === boardFilter.caseId);
+                    return caseItem?.phases.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ));
+                  })()}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm text-slate-600 mb-1.5">按学生</label>
+                <select
+                  value={boardFilter.studentId}
+                  onChange={(e) => setBoardFilter({ ...boardFilter, studentId: e.target.value })}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 bg-white"
+                >
+                  <option value="">全部学生</option>
+                  {allStudents.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* 分析卡片 */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* 任务卡点分析 */}
+            <div className="bg-white rounded-lg border border-slate-200 p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <AlertTriangle className="w-5 h-5 text-yellow-500" />
+                <h3 className="font-semibold text-slate-800">任务卡点分析</h3>
+                <span className="text-xs text-slate-400 ml-auto">待批阅最多的任务</span>
+              </div>
+              {stuckTasks.length === 0 ? (
+                <p className="text-sm text-slate-400 text-center py-8">暂无待批阅任务</p>
+              ) : (
+                <div className="space-y-3">
+                  {stuckTasks.map((task, idx) => (
+                    <div
+                      key={`${task.caseId}-${task.taskId}`}
+                      onClick={() => {
+                        setBoardFilter({ ...boardFilter, caseId: task.caseId, phaseId: task.phaseId });
+                      }}
+                      className="flex items-center gap-3 p-3 rounded-lg bg-yellow-50/50 hover:bg-yellow-50 cursor-pointer transition-colors"
+                    >
+                      <span className="w-6 h-6 rounded-full bg-yellow-100 text-yellow-700 flex items-center justify-center text-xs font-bold flex-shrink-0">
+                        {idx + 1}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-700 truncate">{task.taskName}</p>
+                        <p className="text-xs text-slate-500">{task.caseName} · {task.phaseName}</p>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-lg font-bold text-yellow-600 font-mono">{task.submitted}</p>
+                        <p className="text-xs text-slate-400">份待批阅</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 未提交学生提醒 */}
+            <div className="bg-white rounded-lg border border-slate-200 p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <UserX className="w-5 h-5 text-red-500" />
+                <h3 className="font-semibold text-slate-800">未提交学生</h3>
+                <span className="text-xs text-slate-400 ml-auto">
+                  {boardFilter.caseId ? `已选病例` : '请先选择病例'}
+                </span>
+              </div>
+              {!boardFilter.caseId ? (
+                <p className="text-sm text-slate-400 text-center py-8">选择病例后查看未提交学生</p>
+              ) : missingSubmissions.length === 0 ? (
+                <p className="text-sm text-green-600 text-center py-8">所有学生都已提交</p>
+              ) : (
+                <div className="space-y-3 max-h-64 overflow-y-auto">
+                  {missingSubmissions.slice(0, 5).map(item => (
+                    <div key={`${item.phaseId}-${item.taskId}`} className="p-3 rounded-lg bg-red-50/50">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-sm font-medium text-slate-700">{item.taskName}</p>
+                        <span className="text-xs text-red-600 font-medium">
+                          {item.missingStudents.length} 人未交
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {item.missingStudents.slice(0, 5).map(student => (
+                          <span
+                            key={student.id}
+                            className="px-2 py-0.5 bg-white rounded text-xs text-slate-600 border border-slate-200"
+                          >
+                            {student.name}
+                          </span>
+                        ))}
+                        {item.missingStudents.length > 5 && (
+                          <span className="px-2 py-0.5 text-xs text-slate-400">
+                            +{item.missingStudents.length - 5} 人
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 批量点评操作栏 */}
+          {pendingSubmissions.length > 0 && (
+            <div className="bg-gradient-to-r from-primary-50 to-accent-50 rounded-lg border border-primary-200 p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <MessageSquareText className="w-6 h-6 text-primary-600" />
+                <div>
+                  <p className="font-medium text-primary-800">
+                    共 {pendingSubmissions.length} 份作业待批阅
+                  </p>
+                  <p className="text-xs text-primary-600/70">
+                    点击下方按钮开始批量点评
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  if (pendingSubmissions.length > 0) {
+                    navigate(`/annotations?submissionId=${pendingSubmissions[0].id}&from=board`);
+                  }
+                }}
+                className="px-5 py-2.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors flex items-center gap-1.5"
+              >
+                <Send className="w-4 h-4" />
+                开始批量点评
+              </button>
+            </div>
+          )}
+
+          {/* 病例看板列表 */}
+          {filteredBoardData.map((caseItem) => {
             const totalSubmitted = caseItem.phases.reduce((acc, p) => acc + p.totalStats.submitted, 0);
             const totalReviewed = caseItem.phases.reduce((acc, p) => acc + p.totalStats.reviewed, 0);
             const totalSubmissions = caseItem.phases.reduce((acc, p) => {

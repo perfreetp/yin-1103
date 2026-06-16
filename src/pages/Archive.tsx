@@ -634,13 +634,42 @@ export function ArchivePage() {
                   </label>
                   <select
                     value={uploadForm.caseId}
-                    onChange={(e) => setUploadForm({ ...uploadForm, caseId: e.target.value })}
+                    onChange={(e) => setUploadForm({ ...uploadForm, caseId: e.target.value, taskId: '' })}
                     className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 bg-white"
                   >
                     <option value="">不关联病例</option>
                     {originalCases.map((c) => (
                       <option key={c.id} value={c.id}>{c.anonymousCode} - {c.diagnosis.substring(0, 20)}</option>
                     ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    <ClipboardList className="w-3.5 h-3.5 inline mr-1" />
+                    关联任务
+                  </label>
+                  <select
+                    value={uploadForm.taskId}
+                    onChange={(e) => setUploadForm({ ...uploadForm, taskId: e.target.value })}
+                    disabled={!uploadForm.caseId}
+                    className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 bg-white disabled:bg-slate-50 disabled:text-slate-400"
+                  >
+                    <option value="">不关联任务</option>
+                    {uploadForm.caseId && (() => {
+                      const caseItem = originalCases.find(c => c.id === uploadForm.caseId);
+                      if (!caseItem) return null;
+                      const tasks: Array<{ id: string; title: string; phaseName: string }> = [];
+                      caseItem.phases.forEach(phase => {
+                        phase.tasks.forEach(task => {
+                          tasks.push({ id: task.id, title: task.title, phaseName: phase.name });
+                        });
+                      });
+                      return tasks.map(task => (
+                        <option key={task.id} value={task.id}>
+                          {task.phaseName} · {task.title}
+                        </option>
+                      ));
+                    })()}
                   </select>
                 </div>
               </div>
