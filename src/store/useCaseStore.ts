@@ -1,6 +1,9 @@
 import { create } from 'zustand';
-import type { Case, TaskSubmission, CaseDifficulty, CaseStatus, TreatmentPhase } from '../types';
+import type { Case, TaskSubmission, CaseDifficulty, CaseStatus, TreatmentPhase, DiscussionOutline, ExcellentCase, ArchiveDocument } from '../types';
 import { cases as initialCases, taskSubmissions as initialSubmissions } from '../data/cases';
+import { discussionOutlines as initialOutlines, excellentCases as initialExcellent, archiveDocuments as initialDocs } from '../data/assessment';
+
+const STORAGE_KEY = 'ortho-teaching-store';
 
 function createDefaultPhases(caseId: string): TreatmentPhase[] {
   return [
@@ -47,10 +50,43 @@ function createDefaultPhases(caseId: string): TreatmentPhase[] {
   ];
 }
 
+// 从 localStorage 加载数据
+function loadFromStorage<T>(key: string, fallback: T): T {
+  try {
+    const saved = localStorage.getItem(`${STORAGE_KEY}-${key}`);
+    if (saved) {
+      return JSON.parse(saved);
+    }
+  } catch (e) {
+    console.warn(`Failed to load ${key} from localStorage`, e);
+  }
+  return fallback;
+}
+
+// 保存到 localStorage
+function saveToStorage<T>(key: string, data: T): void {
+  try {
+    localStorage.setItem(`${STORAGE_KEY}-${key}`, JSON.stringify(data));
+  } catch (e) {
+    console.warn(`Failed to save ${key} to localStorage`, e);
+  }
+}
+
 interface CaseState {
+  // 病例相关
   cases: Case[];
+  originalCases: Case[];
   currentCase: Case | null;
+  
+  // 提交相关
   submissions: TaskSubmission[];
+  
+  // 归档资料
+  discussionOutlines: DiscussionOutline[];
+  excellentCases: ExcellentCase[];
+  archiveDocuments: ArchiveDocument[];
+  
+  // UI状态
   isLoading: boolean;
   filters: {
     difficulty?: CaseDifficulty;
@@ -58,7 +94,8 @@ interface CaseState {
     treatmentType?: string;
     search?: string;
   };
-  originalCases: Case[];
+  
+  // 方法
   fetchCases: (filters?: Partial<CaseState['filters']>) => void;
   fetchCaseDetail: (id: string) => void;
   setCurrentCase: (caseData: Case | null) => void;
@@ -75,13 +112,31 @@ interface CaseState {
     teacherName: string;
   }) => void;
   resetFilters: () => void;
+  
+  // 归档资料方法
+  addArchiveDocument: (doc: {
+    title: string;
+    type: 'outline' | 'excellent_case' | 'reference' | 'template';
+    category: string;
+    description: string;
+    author: string;
+    caseId?: string;
+    taskId?: string;
+  }) => void;
+  
+  // 数据重置（用于演示）
+  resetAllData: () => void;
 }
 
 export const useCaseStore = create<CaseState>((set, get) => ({
-  cases: initialCases,
-  originalCases: initialCases,
+  // 初始化：从 localStorage 加载，没有则用默认数据
+  cases: loadFromStorage('cases', initialCases),
+  originalCases: loadFromStorage('originalCases', initialCases),
   currentCase: null,
-  submissions: initialSubmissions,
+  submissions: loadFromStorage('submissions', initialSubmissions),
+  discussionOutlines: loadFromStorage('discussionOutlines', initialOutlines),
+  excellentCases: loadFromStorage('excellentCases', initialExcellent),
+  archiveDocuments: loadFromStorage('archiveDocuments', initialDocs),
   isLoading: false,
   filters: {},
 
@@ -112,8 +167,9 @@ export const useCaseStore = create<CaseState>((set, get) => ({
   },
 
   resetFilters: () => {
+    const originalCases = get().originalCases;
     set({ 
-      cases: get().originalCases, 
+      cases: originalCases, 
       filters: {}, 
       isLoading: false 
     });
@@ -141,36 +197,36 @@ export const useCaseStore = create<CaseState>((set, get) => ({
       submittedAt: new Date().toISOString().split('T')[0],
       annotations: [],
     };
-    set(state => ({
-      submissions: [...state.submissions, newSubmission],
-    }));
+    const newSubmissions = [...get().submissions, newSubmission];
+    set({ submissions: newSubmissions });
+    saveToStorage('submissions', newSubmissions);
   },
 
   addAnnotation: (submissionId, data, teacherId, teacherName) => {
-    set(state => ({
-      submissions: state.submissions.map(sub => {
-        if (sub.id === submissionId) {
-          return {
-            ...sub,
-            status: 'reviewed' as const,
-            annotations: [
-              ...sub.annotations,
-              {
-                id: `anno-${Date.now()}`,
-                submissionId,
-                teacherId,
-                teacherName,
-                content: data.content,
-                deviationType: data.deviationType as any,
-                severity: data.severity as 1 | 2 | 3,
-                createdAt: new Date().toISOString().split('T')[0],
-              },
-            ],
-          };
-        }
-        return sub;
-      }),
-    }));
+    const newSubmissions = get().submissions.map(sub => {
+      if (sub.id === submissionId) {
+        return {
+          ...sub,
+          status: 'reviewed' as const,
+          annotations: [
+            ...sub.annotations,
+            {
+              id: `anno-${Date.now()}`,
+              submissionId,
+              teacherId,
+              teacherName,
+              content: data.content,
+              deviationType: data.deviationType as any,
+              severity: data.severity as 1 | 2 | 3,
+              createdAt: new Date().toISOString().split('T')[0],
+            },
+          ],
+        };
+      }
+      return sub;
+    });
+    set({ submissions: newSubmissions });
+    saveToStorage('submissions', newSubmissions);
   },
 
   addCase: (caseData) => {
@@ -204,9 +260,82 @@ export const useCaseStore = create<CaseState>((set, get) => ({
       ],
       photos: [],
     };
-    set(state => ({
-      originalCases: [newCase, ...state.originalCases],
-      cases: [newCase, ...state.cases],
-    }));
+    const newOriginalCases = [newCase, ...get().originalCases];
+    const newCases = [newCase, ...get().cases];
+    
+    set({
+      originalCases: newOriginalCases,
+      cases: newCases,
+    });
+    
+    saveToStorage('originalCases', newOriginalCases);
+    saveToStorage('cases', newCases);
+  },
+
+  addArchiveDocument: (doc) => {
+    const today = new Date().toISOString().split('T')[0];
+    
+    // 根据类型添加到对应的集合
+    if (doc.type === 'excellent_case') {
+      const newExcellent: ExcellentCase = {
+        id: `excellent-${Date.now()}`,
+        caseId: doc.caseId || '',
+        caseName: doc.title,
+        diagnosis: doc.category,
+        reason: doc.description,
+        tags: [doc.category],
+        archivedAt: today,
+        difficultyLevel: 'medium',
+      };
+      const newExcellentCases = [...get().excellentCases, newExcellent];
+      set({ excellentCases: newExcellentCases });
+      saveToStorage('excellentCases', newExcellentCases);
+    } else if (doc.type === 'outline') {
+      const newOutline: DiscussionOutline = {
+        id: `outline-${Date.now()}`,
+        caseId: doc.caseId || '',
+        caseName: doc.title,
+        title: doc.title,
+        generatedAt: today,
+        sections: [
+          { title: '一、病例特点分析', points: ['待补充'] },
+          { title: '二、诊断与鉴别诊断', points: ['待补充'] },
+          { title: '三、治疗方案讨论', points: ['待补充'] },
+        ],
+      };
+      const newOutlines = [...get().discussionOutlines, newOutline];
+      set({ discussionOutlines: newOutlines });
+      saveToStorage('discussionOutlines', newOutlines);
+    } else {
+      const newDoc: ArchiveDocument = {
+        id: `doc-${Date.now()}`,
+        title: doc.title,
+        type: doc.type,
+        category: doc.category,
+        description: doc.description,
+        createdAt: today,
+        author: doc.author,
+      };
+      const newDocs = [...get().archiveDocuments, newDoc];
+      set({ archiveDocuments: newDocs });
+      saveToStorage('archiveDocuments', newDocs);
+    }
+  },
+
+  resetAllData: () => {
+    set({
+      cases: initialCases,
+      originalCases: initialCases,
+      submissions: initialSubmissions,
+      discussionOutlines: initialOutlines,
+      excellentCases: initialExcellent,
+      archiveDocuments: initialDocs,
+    });
+    saveToStorage('cases', initialCases);
+    saveToStorage('originalCases', initialCases);
+    saveToStorage('submissions', initialSubmissions);
+    saveToStorage('discussionOutlines', initialOutlines);
+    saveToStorage('excellentCases', initialExcellent);
+    saveToStorage('archiveDocuments', initialDocs);
   },
 }));

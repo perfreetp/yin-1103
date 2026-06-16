@@ -318,7 +318,7 @@ export function TaskDetail() {
                   {allSubmissions.map((sub) => (
                     <Link
                       key={sub.id}
-                      to="/annotations"
+                      to={`/annotations?submissionId=${sub.id}&from=task-${taskId}`}
                       className="block p-4 border border-slate-200 rounded-lg hover:border-primary-300 hover:bg-slate-50 transition-all"
                     >
                       <div className="flex items-center justify-between mb-2">

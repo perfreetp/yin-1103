@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useLocation, useNavigate, Link } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { 
   MessageSquareText,
@@ -12,7 +13,8 @@ import {
   XCircle,
   Minus,
   X,
-  Send
+  Send,
+  ArrowLeft
 } from 'lucide-react';
 import { useCaseStore } from '../store/useCaseStore';
 import { useAuthStore } from '../store/useAuthStore';
@@ -35,8 +37,16 @@ const severityConfig: Record<number, { label: string; color: string; icon: any }
 export function Annotations() {
   const { submissions, originalCases, addAnnotation } = useCaseStore();
   const { currentUser } = useAuthStore();
+  const location = useLocation();
+  const navigate = useNavigate();
+  
+  // 解析 URL 参数
+  const params = new URLSearchParams(location.search);
+  const submissionIdFromUrl = params.get('submissionId');
+  const fromTask = params.get('from');
+  
   const [selectedSubmission, setSelectedSubmission] = useState<string | null>(
-    submissions.find(s => s.annotations.length > 0)?.id || null
+    submissionIdFromUrl || submissions.find(s => s.annotations.length > 0)?.id || null
   );
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'list' | 'compare'>('list');
@@ -44,6 +54,20 @@ export function Annotations() {
   const [newContent, setNewContent] = useState('');
   const [newDeviationType, setNewDeviationType] = useState('diagnosis');
   const [newSeverity, setNewSeverity] = useState<1 | 2 | 3>(2);
+
+  // 如果 URL 有 submissionId 参数，自动选中并滚动
+  useEffect(() => {
+    if (submissionIdFromUrl) {
+      setSelectedSubmission(submissionIdFromUrl);
+      // 高亮左侧对应项
+      setTimeout(() => {
+        const el = document.getElementById(`submission-${submissionIdFromUrl}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 100);
+    }
+  }, [submissionIdFromUrl]);
 
   const currentSubmission = submissions.find(s => s.id === selectedSubmission);
   const currentCase = currentSubmission
@@ -87,10 +111,25 @@ export function Annotations() {
     setNewContent('');
     setNewDeviationType('diagnosis');
     setNewSeverity(2);
+    // 清除 URL 参数
+    if (submissionIdFromUrl) {
+      navigate('/annotations', { replace: true });
+    }
   };
 
   return (
     <Layout>
+      {/* 返回按钮（如果从任务详情跳转过来） */}
+      {fromTask && (
+        <button
+          onClick={() => navigate(`/teaching-plan/${fromTask.replace('task-', '')}`)}
+          className="flex items-center gap-2 text-slate-600 hover:text-primary-600 mb-4 transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          <span>返回任务详情</span>
+        </button>
+      )}
+
       {/* 页面头部 */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
@@ -184,12 +223,14 @@ export function Annotations() {
                   return (
                     <div
                       key={submission.id}
+                      id={`submission-${submission.id}`}
                       onClick={() => setSelectedSubmission(submission.id)}
                       className={cn(
                         'p-4 cursor-pointer transition-all',
                         isSelected
-                          ? 'bg-primary-50 border-l-4 border-primary-600'
-                          : 'hover:bg-slate-50 border-l-4 border-transparent'
+                          ? 'bg-primary-50 border-l-4 border-primary-600 ring-1 ring-primary-100'
+                          : 'hover:bg-slate-50 border-l-4 border-transparent',
+                        submissionIdFromUrl === submission.id && 'animate-pulse'
                       )}
                     >
                       <div className="flex items-start justify-between mb-2">

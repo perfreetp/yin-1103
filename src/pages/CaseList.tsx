@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Layout } from '../components/layout/Layout';
 import { CaseCard } from '../components/business/CaseCard';
 import { 
@@ -63,6 +64,7 @@ interface NewCaseForm {
 
 export function CaseList() {
   const { cases, originalCases, addCase, resetFilters } = useCaseStore();
+  const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [difficulty, setDifficulty] = useState<CaseDifficulty | ''>('');
@@ -298,7 +300,7 @@ export function CaseList() {
                 <tr
                   key={caseItem.id}
                   className="hover:bg-slate-50 cursor-pointer transition-colors"
-                  onClick={() => window.location.href = `/cases/${caseItem.id}`}
+                  onClick={() => navigate(`/cases/${caseItem.id}`)}
                 >
                   <td className="px-4 py-3">
                     <span className="text-sm font-mono text-slate-600">
