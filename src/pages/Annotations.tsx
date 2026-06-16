@@ -10,9 +10,12 @@ import {
   Filter,
   ThumbsUp,
   XCircle,
-  Minus
+  Minus,
+  X,
+  Send
 } from 'lucide-react';
-import { taskSubmissions, cases } from '../data/cases';
+import { useCaseStore } from '../store/useCaseStore';
+import { useAuthStore } from '../store/useAuthStore';
 import { cn } from '../lib/utils';
 
 const deviationTypeLabels: Record<string, string> = {
@@ -23,25 +26,31 @@ const deviationTypeLabels: Record<string, string> = {
   other: '其他',
 };
 
-const severityConfig = {
+const severityConfig: Record<number, { label: string; color: string; icon: any }> = {
   1: { label: '轻度', color: 'bg-green-100 text-green-700', icon: ThumbsUp },
   2: { label: '中度', color: 'bg-yellow-100 text-yellow-700', icon: Minus },
   3: { label: '重度', color: 'bg-red-100 text-red-700', icon: AlertTriangle },
 };
 
 export function Annotations() {
+  const { submissions, originalCases, addAnnotation } = useCaseStore();
+  const { currentUser } = useAuthStore();
   const [selectedSubmission, setSelectedSubmission] = useState<string | null>(
-    taskSubmissions.find(s => s.annotations.length > 0)?.id || null
+    submissions.find(s => s.annotations.length > 0)?.id || null
   );
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [viewMode, setViewMode] = useState<'list' | 'compare'>('list');
+  const [showAnnotationModal, setShowAnnotationModal] = useState(false);
+  const [newContent, setNewContent] = useState('');
+  const [newDeviationType, setNewDeviationType] = useState('diagnosis');
+  const [newSeverity, setNewSeverity] = useState<1 | 2 | 3>(2);
 
-  const currentSubmission = taskSubmissions.find(s => s.id === selectedSubmission);
+  const currentSubmission = submissions.find(s => s.id === selectedSubmission);
   const currentCase = currentSubmission
-    ? cases.find(c => c.id === currentSubmission.caseId)
+    ? originalCases.find(c => c.id === currentSubmission.caseId)
     : null;
 
-  const filteredSubmissions = taskSubmissions.filter(s => {
+  const filteredSubmissions = submissions.filter(s => {
     if (filterStatus === 'all') return true;
     if (filterStatus === 'pending') return s.status === 'submitted' && s.annotations.length === 0;
     if (filterStatus === 'reviewed') return s.status === 'reviewed';
@@ -49,7 +58,36 @@ export function Annotations() {
     return true;
   });
 
-  const submissionsForCompare = taskSubmissions.filter(s => s.taskId === 'case-001-task-4');
+  const submissionsForCompare = submissions.filter(s => s.taskId === 'case-001-task-4');
+
+  const stats = {
+    pending: submissions.filter(s => s.status === 'submitted').length,
+    reviewed: submissions.filter(s => s.status === 'reviewed').length,
+    needsRevision: submissions.filter(s => s.status === 'needs_revision').length,
+    totalAnnotations: submissions.reduce((acc, s) => acc + s.annotations.length, 0),
+  };
+
+  const handleAddAnnotation = () => {
+    if (!currentSubmission || !currentUser) return;
+    if (!newContent.trim()) {
+      alert('请填写批注内容');
+      return;
+    }
+    addAnnotation(
+      currentSubmission.id,
+      {
+        content: newContent,
+        deviationType: newDeviationType,
+        severity: newSeverity,
+      },
+      currentUser.id,
+      currentUser.name
+    );
+    setShowAnnotationModal(false);
+    setNewContent('');
+    setNewDeviationType('diagnosis');
+    setNewSeverity(2);
+  };
 
   return (
     <Layout>
@@ -89,10 +127,10 @@ export function Annotations() {
       {/* 统计卡片 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         {[
-          { label: '待批阅', value: taskSubmissions.filter(s => s.status === 'submitted').length, color: 'text-accent-600 bg-accent-50' },
-          { label: '已批注', value: taskSubmissions.filter(s => s.status === 'reviewed').length, color: 'text-green-600 bg-green-50' },
-          { label: '需修改', value: 1, color: 'text-red-600 bg-red-50' },
-          { label: '批注总数', value: taskSubmissions.reduce((acc, s) => acc + s.annotations.length, 0), color: 'text-primary-600 bg-primary-50' },
+          { label: '待批阅', value: stats.pending, color: 'text-accent-600 bg-accent-50' },
+          { label: '已批注', value: stats.reviewed, color: 'text-green-600 bg-green-50' },
+          { label: '需修改', value: stats.needsRevision, color: 'text-red-600 bg-red-50' },
+          { label: '批注总数', value: stats.totalAnnotations, color: 'text-primary-600 bg-primary-50' },
         ].map((stat) => (
           <div key={stat.label} className="bg-white rounded-lg border border-slate-200 p-5">
             <p className="text-sm text-slate-500 mb-2">{stat.label}</p>
@@ -140,7 +178,7 @@ export function Annotations() {
 
               <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
                 {filteredSubmissions.map((submission) => {
-                  const caseItem = cases.find(c => c.id === submission.caseId);
+                  const caseItem = originalCases.find(c => c.id === submission.caseId);
                   const isSelected = selectedSubmission === submission.id;
                   
                   return (
@@ -174,6 +212,10 @@ export function Annotations() {
                           <span className="px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded">
                             已批阅
                           </span>
+                        ) : submission.status === 'needs_revision' ? (
+                          <span className="px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 rounded">
+                            需修改
+                          </span>
                         ) : (
                           <span className="px-2 py-0.5 text-xs font-medium bg-accent-100 text-accent-700 rounded">
                             待批阅
@@ -198,6 +240,11 @@ export function Annotations() {
                     </div>
                   );
                 })}
+                {filteredSubmissions.length === 0 && (
+                  <div className="text-center py-12">
+                    <p className="text-slate-400 text-sm">暂无匹配的提交记录</p>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -237,13 +284,13 @@ export function Annotations() {
                   <div className="space-y-4">
                     <div>
                       <h4 className="text-sm font-medium text-slate-700 mb-2">诊断判断</h4>
-                      <p className="text-sm text-slate-600 bg-slate-50 p-4 rounded-lg">
+                      <p className="text-sm text-slate-600 bg-slate-50 p-4 rounded-lg leading-relaxed">
                         {currentSubmission.content}
                       </p>
                     </div>
                     <div>
                       <h4 className="text-sm font-medium text-slate-700 mb-2">判断依据</h4>
-                      <p className="text-sm text-slate-600 bg-slate-50 p-4 rounded-lg">
+                      <p className="text-sm text-slate-600 bg-slate-50 p-4 rounded-lg leading-relaxed">
                         {currentSubmission.judgmentBasis}
                       </p>
                     </div>
@@ -254,7 +301,11 @@ export function Annotations() {
                 <div className="bg-white rounded-lg border border-slate-200 p-6">
                   <div className="flex items-center justify-between mb-6">
                     <h3 className="font-medium text-slate-800">老师批注</h3>
-                    <button className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors">
+                    <button 
+                      onClick={() => setShowAnnotationModal(true)}
+                      className="px-4 py-2 text-sm bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors flex items-center gap-1"
+                    >
+                      <Send className="w-4 h-4" />
                       添加批注
                     </button>
                   </div>
@@ -272,8 +323,8 @@ export function Annotations() {
                           >
                             <div className="flex items-start justify-between mb-2">
                               <div className="flex items-center gap-2">
-                                <span className={cn('px-2 py-0.5 rounded text-xs font-medium', severity.color)}>
-                                  <SeverityIcon className="w-3 h-3 inline mr-1" />
+                                <span className={cn('px-2 py-0.5 rounded text-xs font-medium inline-flex items-center gap-1', severity.color)}>
+                                  <SeverityIcon className="w-3 h-3" />
                                   {severity.label}
                                 </span>
                                 <span className="text-xs text-slate-500">
@@ -282,7 +333,7 @@ export function Annotations() {
                               </div>
                               <span className="text-xs text-slate-400">{annotation.createdAt}</span>
                             </div>
-                            <p className="text-sm text-slate-700">{annotation.content}</p>
+                            <p className="text-sm text-slate-700 leading-relaxed">{annotation.content}</p>
                             <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-200">
                               <img
                                 src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${annotation.teacherId}`}
@@ -391,12 +442,20 @@ export function Annotations() {
                   </div>
                 )}
 
-                <button className="w-full mt-4 py-2 text-sm text-primary-600 border border-primary-200 rounded-lg hover:bg-primary-50 transition-colors flex items-center justify-center gap-1">
+                <button 
+                  onClick={() => { setSelectedSubmission(submission.id); setViewMode('list'); }}
+                  className="w-full mt-4 py-2 text-sm text-primary-600 border border-primary-200 rounded-lg hover:bg-primary-50 transition-colors flex items-center justify-center gap-1"
+                >
                   查看完整批注
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>
             ))}
+            {submissionsForCompare.length === 0 && (
+              <div className="col-span-2 text-center py-12">
+                <p className="text-slate-400">暂无对比数据</p>
+              </div>
+            )}
           </div>
 
           {/* 对比总结 */}
@@ -417,6 +476,109 @@ export function Annotations() {
                   <p className="text-slate-500">关于换丝时机和力的大小存在不同意见，需重点讲解</p>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 添加批注模态框 */}
+      {showAnnotationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-5 border-b border-slate-100">
+              <h3 className="text-lg font-semibold text-slate-800">添加批注</h3>
+              <button
+                onClick={() => setShowAnnotationModal(false)}
+                className="p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                <X className="w-5 h-5 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-5 space-y-5">
+              {currentSubmission && (
+                <div className="p-3 bg-slate-50 rounded-lg flex items-center gap-3">
+                  <img
+                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${currentSubmission.studentId}`}
+                    alt={currentSubmission.studentName}
+                    className="w-9 h-9 rounded-full bg-slate-200"
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-slate-700">给 {currentSubmission.studentName} 添加批注</p>
+                    <p className="text-xs text-slate-500">{currentCase?.anonymousCode}</p>
+                  </div>
+                </div>
+              )}
+              
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  偏差类型
+                </label>
+                <select
+                  value={newDeviationType}
+                  onChange={(e) => setNewDeviationType(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 bg-white"
+                >
+                  {Object.entries(deviationTypeLabels).map(([value, label]) => (
+                    <option key={value} value={value}>{label}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  严重程度
+                </label>
+                <div className="grid grid-cols-3 gap-3">
+                  {Object.entries(severityConfig).map(([key, config]) => {
+                    const level = Number(key) as 1 | 2 | 3;
+                    const SeverityIcon = config.icon;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setNewSeverity(level)}
+                        className={cn(
+                          'flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg border-2 text-sm font-medium transition-all',
+                          newSeverity === level
+                            ? `${config.color} border-current`
+                            : 'border-slate-200 text-slate-500 hover:border-slate-300'
+                        )}
+                      >
+                        <SeverityIcon className="w-4 h-4" />
+                        {config.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  批注内容
+                </label>
+                <textarea
+                  rows={5}
+                  value={newContent}
+                  onChange={(e) => setNewContent(e.target.value)}
+                  placeholder="请详细描述问题点和改进建议，具体说明应该如何调整方案、时机或方法..."
+                  className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 text-sm resize-none"
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-3 p-5 border-t border-slate-100 bg-slate-50">
+              <button
+                onClick={() => setShowAnnotationModal(false)}
+                className="px-5 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-600 hover:bg-white transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleAddAnnotation}
+                className="px-5 py-2.5 bg-primary-600 text-white rounded-lg text-sm font-medium hover:bg-primary-700 transition-colors shadow-sm flex items-center gap-1.5"
+              >
+                <Send className="w-4 h-4" />
+                保存批注
+              </button>
             </div>
           </div>
         </div>

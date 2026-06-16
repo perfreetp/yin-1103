@@ -4,6 +4,7 @@ import { Dashboard } from "@/pages/Dashboard";
 import { CaseList } from "@/pages/CaseList";
 import { CaseDetail } from "@/pages/CaseDetail";
 import { TeachingPlan } from "@/pages/TeachingPlan";
+import { TaskDetail } from "@/pages/TaskDetail";
 import { FollowUp } from "@/pages/FollowUp";
 import { Annotations } from "@/pages/Annotations";
 import { Assessment } from "@/pages/Assessment";
@@ -59,7 +60,7 @@ export default function App() {
           path="/teaching-plan/:taskId"
           element={
             <ProtectedRoute>
-              <CaseDetail />
+              <TaskDetail />
             </ProtectedRoute>
           }
         />
